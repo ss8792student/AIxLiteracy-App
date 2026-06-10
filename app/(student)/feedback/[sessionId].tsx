@@ -172,7 +172,22 @@ export default function FeedbackScreen() {
         (sess) => sess.bookId === s.bookId && sess.id !== s.id
       );
 
+      // Compute streak: increment if last read was yesterday, reset if gap, keep if same day
+      const todayStr = new Date().toISOString().split('T')[0];
+      const lastReadStr = currentStudent.lastReadDate?.split('T')[0];
+      let newStreak: number;
+      if (!lastReadStr || lastReadStr === todayStr) {
+        newStreak = lastReadStr === todayStr ? currentStudent.streak : 1;
+      } else {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        newStreak = lastReadStr === yesterdayStr ? currentStudent.streak + 1 : 1;
+      }
+
       await updateStudentProgress(s.studentId, {
+        streak: newStreak,
+        lastReadDate: todayStr,
         totalMinutes: currentStudent.totalMinutes + minutesRead,
         totalWords: currentStudent.totalWords + wordsRead,
         ...(isFirstForBook && { totalBooksCompleted: currentStudent.totalBooksCompleted + 1 }),

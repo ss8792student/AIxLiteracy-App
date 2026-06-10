@@ -194,7 +194,7 @@ export default function WordReviewScreen() {
     stopListening();
     setAttempts(0);
     if (index + 1 >= words.length) {
-      router.replace(`/(student)/practice/${sessionId}`);
+      router.replace(`/(student)/feedback/${sessionId}`);
     } else {
       setIndex((i) => i + 1);
       setCardState('idle');
@@ -218,8 +218,8 @@ export default function WordReviewScreen() {
       <SafeAreaView style={styles.center}>
         <Text style={styles.doneEmoji}>🎉</Text>
         <Text style={styles.doneTitle}>All done!</Text>
-        <TouchableOpacity style={styles.nextBtn} onPress={() => router.replace(`/(student)/practice/${sessionId}`)}>
-          <Text style={styles.nextBtnText}>Continue to Practice →</Text>
+        <TouchableOpacity style={styles.nextBtn} onPress={() => router.replace(`/(student)/feedback/${sessionId}`)}>
+          <Text style={styles.nextBtnText}>Back to Results →</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );

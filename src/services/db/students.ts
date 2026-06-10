@@ -10,6 +10,7 @@ function rowToStudent(row: Record<string, unknown>): Student {
     language: row.language as Student['language'],
     role: row.role as Student['role'],
     streak: row.streak as number,
+    lastReadDate: row.last_read_date as string | undefined,
     totalMinutes: row.total_minutes as number,
     totalWords: row.total_words as number,
     totalBooksCompleted: row.total_books_completed as number,
@@ -58,7 +59,7 @@ export async function createStudent(student: Student): Promise<void> {
 
 export async function updateStudentProgress(
   id: string,
-  updates: Partial<Pick<Student, 'streak' | 'totalMinutes' | 'totalWords' | 'totalBooksCompleted'>>
+  updates: Partial<Pick<Student, 'streak' | 'lastReadDate' | 'totalMinutes' | 'totalWords' | 'totalBooksCompleted'>>
 ): Promise<void> {
   const db = await getDb();
   const fields: string[] = [];
@@ -67,6 +68,10 @@ export async function updateStudentProgress(
   if (updates.streak !== undefined) {
     fields.push('streak = ?');
     values.push(updates.streak);
+  }
+  if (updates.lastReadDate !== undefined) {
+    fields.push('last_read_date = ?');
+    values.push(updates.lastReadDate);
   }
   if (updates.totalMinutes !== undefined) {
     fields.push('total_minutes = ?');

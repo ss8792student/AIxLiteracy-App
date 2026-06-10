@@ -38,6 +38,16 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       [1]
     );
   }
+
+  if (currentVersion < 2) {
+    await database.execAsync(
+      'ALTER TABLE students ADD COLUMN last_read_date TEXT'
+    );
+    await database.runAsync(
+      'INSERT INTO schema_version (version) VALUES (?)',
+      [2]
+    );
+  }
 }
 
 async function applyMigration1(database: SQLite.SQLiteDatabase): Promise<void> {

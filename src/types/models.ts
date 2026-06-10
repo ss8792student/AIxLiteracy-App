@@ -9,6 +9,7 @@ export interface Student {
   language: Language;
   role: Role;
   streak: number;
+  lastReadDate?: string;
   totalMinutes: number;
   totalWords: number;
   totalBooksCompleted: number;

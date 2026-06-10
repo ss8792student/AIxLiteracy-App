@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useStudent } from '../../../src/contexts/StudentContext';
@@ -29,6 +32,7 @@ export default function PracticeScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [showResult, setShowResult] = useState(false);
+  const [textInput, setTextInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isDone, setIsDone] = useState(false);
   const [score, setScore] = useState(0);
@@ -72,6 +76,7 @@ export default function PracticeScreen() {
 
   async function handleNext() {
     setShowResult(false);
+    setTextInput('');
     if (currentIndex < activities.length - 1) {
       setCurrentIndex((i) => i + 1);
     } else {
@@ -181,6 +186,7 @@ export default function PracticeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
         <View style={styles.progressBarOuter}>
           <View
@@ -197,7 +203,7 @@ export default function PracticeScreen() {
         <Text style={styles.questionLabel}>Question {currentIndex + 1}</Text>
         <Text style={styles.question}>{activity.question}</Text>
 
-        {activity.type === 'multiple_choice' && activity.options && (
+        {activity.type === 'multiple_choice' && activity.options ? (
           <View style={styles.optionsContainer}>
             {activity.options.map((option, i) => {
               const isSelected = selectedAnswer === option;
@@ -225,7 +231,27 @@ export default function PracticeScreen() {
               );
             })}
           </View>
-        )}
+        ) : !showResult ? (
+          <View style={styles.fillBlankContainer}>
+            <TextInput
+              style={styles.fillBlankInput}
+              value={textInput}
+              onChangeText={setTextInput}
+              placeholder="Type your answer here..."
+              placeholderTextColor="#9BB5CC"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              style={[styles.submitBtn, !textInput.trim() && styles.submitBtnDisabled]}
+              onPress={() => textInput.trim() && handleAnswer(activity.id, textInput.trim())}
+              disabled={!textInput.trim()}
+            >
+              <Text style={styles.submitBtnText}>Check Answer ✓</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {showResult && (
           <View style={[styles.resultBanner, isCorrect ? styles.resultCorrect : styles.resultWrong]}>
@@ -249,6 +275,7 @@ export default function PracticeScreen() {
           </TouchableOpacity>
         </View>
       )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -306,6 +333,24 @@ const styles = StyleSheet.create({
   resultWrong: { backgroundColor: '#FFF3E0' },
   resultText: { fontSize: 16, fontWeight: '600', color: '#1A3A5C', textAlign: 'center' },
   hintText: { fontSize: 14, color: '#7B8D9E', marginTop: 16, fontStyle: 'italic' },
+  fillBlankContainer: { gap: 12 },
+  fillBlankInput: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 18,
+    fontSize: 18,
+    color: '#1A3A5C',
+    borderWidth: 2,
+    borderColor: '#E3F2FD',
+  },
+  submitBtn: {
+    backgroundColor: '#4A90D9',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  submitBtnDisabled: { backgroundColor: '#B0C8E8' },
+  submitBtnText: { fontSize: 17, fontWeight: '800', color: '#fff' },
   nextRow: { padding: 16, borderTopWidth: 1, borderTopColor: '#E3F2FD' },
   nextBtn: {
     backgroundColor: '#4A90D9',

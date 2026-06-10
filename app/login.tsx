@@ -17,29 +17,42 @@ import { useStudent } from '../src/contexts/StudentContext';
 import { getProfile, profileToStudent } from '../src/services/supabase/profile';
 import { upsertStudent } from '../src/services/db/students';
 
+function validateUsername(u: string): string | null {
+  if (u.length < 3) return 'Username must be at least 3 characters.';
+  if (u.length > 20) return 'Username must be 20 characters or less.';
+  if (!/^[a-z0-9_]+$/.test(u)) return 'Only letters, numbers, and underscores allowed.';
+  return null;
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn, signUp } = useAuth();
   const { selectStudent, refreshStudents } = useStudent();
 
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+  function handleUsernameChange(text: string) {
+    // Enforce lowercase + allowed chars as the user types
+    setUsername(text.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+  }
+
   async function handleSignIn() {
-    if (!email.trim() || !password) return;
+    const usernameErr = validateUsername(username);
+    if (usernameErr) { setError(usernameErr); return; }
+    if (!password) { setError('Please enter your password.'); return; }
+
     setIsLoading(true);
     setError('');
-    const err = await signIn(email.trim().toLowerCase(), password);
+    const err = await signIn(username, password);
     if (err) {
       setError(friendlyError(err));
       setIsLoading(false);
       return;
     }
-    // Auth state change will re-trigger layout redirect, but we also
-    // proactively load the profile to warm the local DB.
     try {
       const { supabase } = await import('../src/services/supabase/client');
       const { data } = await supabase.auth.getUser();
@@ -63,30 +76,35 @@ export default function LoginScreen() {
   }
 
   async function handleSignUp() {
-    if (!email.trim() || !password) return;
+    const usernameErr = validateUsername(username);
+    if (usernameErr) { setError(usernameErr); return; }
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
     }
+
     setIsLoading(true);
     setError('');
-    const err = await signUp(email.trim().toLowerCase(), password);
+    const err = await signUp(username, password);
     if (err) {
       setError(friendlyError(err));
       setIsLoading(false);
       return;
     }
-    // After signup, go to onboarding to set name/grade/avatar
     router.replace('/onboarding');
     setIsLoading(false);
   }
 
   function friendlyError(msg: string): string {
-    if (msg.includes('Invalid login credentials')) return 'Wrong email or password. Try again!';
-    if (msg.includes('Email not confirmed')) return 'Check your email to confirm your account first.';
-    if (msg.includes('User already registered')) return 'An account with that email already exists. Try signing in!';
+    if (msg.includes('Invalid login credentials')) return 'Wrong username or password. Try again!';
+    if (msg.includes('User already registered')) return 'That username is taken. Try a different one!';
     if (msg.includes('Password should be')) return 'Password must be at least 6 characters.';
-    return msg;
+    return 'Something went wrong. Please try again.';
+  }
+
+  function switchTab(t: 'signin' | 'signup') {
+    setTab(t);
+    setError('');
   }
 
   return (
@@ -106,7 +124,7 @@ export default function LoginScreen() {
             <View style={styles.tabs}>
               <TouchableOpacity
                 style={[styles.tab, tab === 'signin' && styles.tabActive]}
-                onPress={() => { setTab('signin'); setError(''); }}
+                onPress={() => switchTab('signin')}
               >
                 <Text style={[styles.tabText, tab === 'signin' && styles.tabTextActive]}>
                   Sign In
@@ -114,7 +132,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.tab, tab === 'signup' && styles.tabActive]}
-                onPress={() => { setTab('signup'); setError(''); }}
+                onPress={() => switchTab('signup')}
               >
                 <Text style={[styles.tabText, tab === 'signup' && styles.tabTextActive]}>
                   Create Account
@@ -123,18 +141,22 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.form}>
-              <Text style={styles.inputLabel}>Email</Text>
+              <Text style={styles.inputLabel}>Username</Text>
               <TextInput
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="your@email.com"
+                value={username}
+                onChangeText={handleUsernameChange}
+                placeholder="e.g. reading_star"
                 placeholderTextColor="#9BB5CC"
-                keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoComplete="email"
+                autoComplete="username"
+                maxLength={20}
+                returnKeyType="next"
               />
+              {tab === 'signup' && (
+                <Text style={styles.inputHint}>Letters, numbers, and underscores only</Text>
+              )}
 
               <Text style={styles.inputLabel}>Password</Text>
               <TextInput
@@ -145,6 +167,8 @@ export default function LoginScreen() {
                 placeholderTextColor="#9BB5CC"
                 secureTextEntry
                 autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
+                returnKeyType="done"
+                onSubmitEditing={tab === 'signin' ? handleSignIn : handleSignUp}
               />
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -163,18 +187,17 @@ export default function LoginScreen() {
                 )}
               </TouchableOpacity>
 
-              {tab === 'signin' && (
+              {tab === 'signin' ? (
                 <Text style={styles.switchHint}>
                   No account yet?{' '}
-                  <Text style={styles.switchLink} onPress={() => { setTab('signup'); setError(''); }}>
+                  <Text style={styles.switchLink} onPress={() => switchTab('signup')}>
                     Create one
                   </Text>
                 </Text>
-              )}
-              {tab === 'signup' && (
+              ) : (
                 <Text style={styles.switchHint}>
                   Already have an account?{' '}
-                  <Text style={styles.switchLink} onPress={() => { setTab('signin'); setError(''); }}>
+                  <Text style={styles.switchLink} onPress={() => switchTab('signin')}>
                     Sign in
                   </Text>
                 </Text>
@@ -183,7 +206,7 @@ export default function LoginScreen() {
           </View>
 
           <Text style={styles.privacyNote}>
-            🔒 Your reading data is private and secure.
+            🔒 No email needed · Your data stays private
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -216,6 +239,7 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#4A90D9' },
   form: { padding: 24, gap: 4 },
   inputLabel: { fontSize: 13, fontWeight: '700', color: '#5A7A9C', marginBottom: 6, marginTop: 12 },
+  inputHint: { fontSize: 12, color: '#9BB5CC', marginTop: 4 },
   input: {
     backgroundColor: '#F4F8FF',
     borderRadius: 12,

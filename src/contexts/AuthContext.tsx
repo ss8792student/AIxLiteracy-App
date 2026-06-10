@@ -6,9 +6,15 @@ interface AuthContextValue {
   session: Session | null;
   user: User | null;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
+  signIn: (username: string, password: string) => Promise<string | null>;
+  signUp: (username: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
+}
+
+// Converts a username to the internal fake email used for Supabase auth.
+// Kids never see this — they only ever type their username.
+function toEmail(username: string): string {
+  return `${username.toLowerCase().trim()}@aixliteracy.app`;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -30,13 +36,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function signIn(email: string, password: string): Promise<string | null> {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  async function signIn(username: string, password: string): Promise<string | null> {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: toEmail(username),
+      password,
+    });
     return error ? error.message : null;
   }
 
-  async function signUp(email: string, password: string): Promise<string | null> {
-    const { error } = await supabase.auth.signUp({ email, password });
+  async function signUp(username: string, password: string): Promise<string | null> {
+    const { error } = await supabase.auth.signUp({
+      email: toEmail(username),
+      password,
+    });
     return error ? error.message : null;
   }
 

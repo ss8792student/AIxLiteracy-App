@@ -15,6 +15,7 @@ function rowToStudent(row: Record<string, unknown>): Student {
     totalWords: row.total_words as number,
     totalBooksCompleted: row.total_books_completed as number,
     createdAt: row.created_at as string,
+    teacherId: row.teacher_id as string | undefined,
   };
 }
 
@@ -22,6 +23,15 @@ export async function getAllStudents(): Promise<Student[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<Record<string, unknown>>(
     'SELECT * FROM students ORDER BY name ASC'
+  );
+  return rows.map(rowToStudent);
+}
+
+export async function getStudentsByTeacher(teacherId: string): Promise<Student[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT * FROM students WHERE teacher_id = ? ORDER BY name ASC',
+    [teacherId]
   );
   return rows.map(rowToStudent);
 }
@@ -39,8 +49,8 @@ export async function createStudent(student: Student): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO students (id, name, avatar_id, grade, language, role, streak,
-      total_minutes, total_words, total_books_completed, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      total_minutes, total_words, total_books_completed, created_at, teacher_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       student.id,
       student.name,
@@ -53,6 +63,7 @@ export async function createStudent(student: Student): Promise<void> {
       student.totalWords,
       student.totalBooksCompleted,
       student.createdAt,
+      student.teacherId ?? null,
     ]
   );
 }
@@ -61,8 +72,8 @@ export async function upsertStudent(student: Student): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO students (id, name, avatar_id, grade, language, role, streak,
-      last_read_date, total_minutes, total_words, total_books_completed, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      last_read_date, total_minutes, total_words, total_books_completed, created_at, teacher_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        avatar_id = excluded.avatar_id,
@@ -73,7 +84,8 @@ export async function upsertStudent(student: Student): Promise<void> {
        last_read_date = excluded.last_read_date,
        total_minutes = excluded.total_minutes,
        total_words = excluded.total_words,
-       total_books_completed = excluded.total_books_completed`,
+       total_books_completed = excluded.total_books_completed,
+       teacher_id = excluded.teacher_id`,
     [
       student.id,
       student.name,
@@ -87,6 +99,7 @@ export async function upsertStudent(student: Student): Promise<void> {
       student.totalWords,
       student.totalBooksCompleted,
       student.createdAt,
+      student.teacherId ?? null,
     ]
   );
 }

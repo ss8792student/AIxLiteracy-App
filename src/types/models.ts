@@ -14,6 +14,7 @@ export interface Student {
   totalWords: number;
   totalBooksCompleted: number;
   createdAt: string;
+  teacherId?: string; // set for teacher-managed students; null for standalone accounts
 }
 
 export interface BookPage {

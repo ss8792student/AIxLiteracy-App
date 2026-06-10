@@ -29,6 +29,7 @@ export default function LoginScreen() {
   const { signIn, signUp } = useAuth();
   const { selectStudent, refreshStudents } = useStudent();
 
+  const [role, setRole] = useState<'student' | 'teacher' | null>(null);
   const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -36,8 +37,19 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   function handleUsernameChange(text: string) {
-    // Enforce lowercase + allowed chars as the user types
     setUsername(text.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+  }
+
+  function switchTab(t: 'signin' | 'signup') {
+    setTab(t);
+    setError('');
+  }
+
+  function friendlyError(msg: string): string {
+    if (msg.includes('Invalid login credentials')) return 'Wrong username or password. Try again!';
+    if (msg.includes('User already registered')) return 'That username is taken. Try a different one!';
+    if (msg.includes('Password should be')) return 'Password must be at least 6 characters.';
+    return 'Something went wrong. Please try again.';
   }
 
   async function handleSignIn() {
@@ -60,22 +72,27 @@ export default function LoginScreen() {
       if (user) {
         const profile = await getProfile(user.id);
         if (profile) {
-          const student = profileToStudent(profile);
-          await upsertStudent(student);
-          await refreshStudents();
-          await selectStudent(student.id);
-          router.replace('/(student)/library');
+          if (profile.role === 'student') {
+            const student = profileToStudent(profile);
+            await upsertStudent(student);
+            await refreshStudents();
+            await selectStudent(student.id);
+            router.replace('/(student)/library');
+          } else {
+            router.replace('/(teacher)');
+          }
         } else {
-          router.replace('/onboarding');
+          router.replace(`/onboarding?role=${role ?? 'student'}`);
         }
       }
     } catch {
-      router.replace('/onboarding');
+      router.replace(`/onboarding?role=${role ?? 'student'}`);
     }
     setIsLoading(false);
   }
 
   async function handleSignUp() {
+    if (!role) { setError('Please choose Student or Teacher first.'); return; }
     const usernameErr = validateUsername(username);
     if (usernameErr) { setError(usernameErr); return; }
     if (password.length < 6) {
@@ -91,33 +108,66 @@ export default function LoginScreen() {
       setIsLoading(false);
       return;
     }
-    router.replace('/onboarding');
+    router.replace(`/onboarding?role=${role}`);
     setIsLoading(false);
   }
 
-  function friendlyError(msg: string): string {
-    if (msg.includes('Invalid login credentials')) return 'Wrong username or password. Try again!';
-    if (msg.includes('User already registered')) return 'That username is taken. Try a different one!';
-    if (msg.includes('Password should be')) return 'Password must be at least 6 characters.';
-    return 'Something went wrong. Please try again.';
-  }
-
-  function switchTab(t: 'signin' | 'signup') {
-    setTab(t);
-    setError('');
-  }
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+  // ── Role selection ───────────────────────────────────────────────────────
+  if (!role) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.hero}>
             <Text style={styles.logoEmoji}>📚</Text>
             <Text style={styles.appName}>AIxLiteracy</Text>
             <Text style={styles.tagline}>Your personal reading coach</Text>
+          </View>
+
+          <Text style={styles.roleHeading}>I am a…</Text>
+
+          <TouchableOpacity style={styles.roleCard} onPress={() => setRole('student')}>
+            <Text style={styles.roleEmoji}>🎒</Text>
+            <View style={styles.roleTextBlock}>
+              <Text style={styles.roleTitle}>Student</Text>
+              <Text style={styles.roleDesc}>
+                Learning at home or on my own device
+              </Text>
+            </View>
+            <Text style={styles.roleArrow}>▶</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.roleCard, styles.teacherCard]} onPress={() => setRole('teacher')}>
+            <Text style={styles.roleEmoji}>👩‍🏫</Text>
+            <View style={styles.roleTextBlock}>
+              <Text style={styles.roleTitle}>Teacher / Admin</Text>
+              <Text style={styles.roleDesc}>
+                Managing students on a shared device
+              </Text>
+            </View>
+            <Text style={styles.roleArrow}>▶</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.privacyNote}>🔒 No email needed · Your data stays private</Text>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Username / password form ─────────────────────────────────────────────
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+
+          <TouchableOpacity style={styles.roleChip} onPress={() => { setRole(null); setError(''); }}>
+            <Text style={styles.roleChipText}>
+              {role === 'teacher' ? '👩‍🏫 Teacher' : '🎒 Student'} · Change
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.hero}>
+            <Text style={styles.logoEmoji}>📚</Text>
+            <Text style={styles.appName}>AIxLiteracy</Text>
           </View>
 
           <View style={styles.card}>
@@ -126,17 +176,13 @@ export default function LoginScreen() {
                 style={[styles.tab, tab === 'signin' && styles.tabActive]}
                 onPress={() => switchTab('signin')}
               >
-                <Text style={[styles.tabText, tab === 'signin' && styles.tabTextActive]}>
-                  Sign In
-                </Text>
+                <Text style={[styles.tabText, tab === 'signin' && styles.tabTextActive]}>Sign In</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.tab, tab === 'signup' && styles.tabActive]}
                 onPress={() => switchTab('signup')}
               >
-                <Text style={[styles.tabText, tab === 'signup' && styles.tabTextActive]}>
-                  Create Account
-                </Text>
+                <Text style={[styles.tabText, tab === 'signup' && styles.tabTextActive]}>Create Account</Text>
               </TouchableOpacity>
             </View>
 
@@ -174,7 +220,7 @@ export default function LoginScreen() {
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <TouchableOpacity
-                style={[styles.btn, isLoading && styles.btnDisabled]}
+                style={[styles.btn, role === 'teacher' && styles.btnTeacher, isLoading && styles.btnDisabled]}
                 onPress={tab === 'signin' ? handleSignIn : handleSignUp}
                 disabled={isLoading}
               >
@@ -190,24 +236,16 @@ export default function LoginScreen() {
               {tab === 'signin' ? (
                 <Text style={styles.switchHint}>
                   No account yet?{' '}
-                  <Text style={styles.switchLink} onPress={() => switchTab('signup')}>
-                    Create one
-                  </Text>
+                  <Text style={styles.switchLink} onPress={() => switchTab('signup')}>Create one</Text>
                 </Text>
               ) : (
                 <Text style={styles.switchHint}>
                   Already have an account?{' '}
-                  <Text style={styles.switchLink} onPress={() => switchTab('signin')}>
-                    Sign in
-                  </Text>
+                  <Text style={styles.switchLink} onPress={() => switchTab('signin')}>Sign in</Text>
                 </Text>
               )}
             </View>
           </View>
-
-          <Text style={styles.privacyNote}>
-            🔒 No email needed · Your data stays private
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -217,10 +255,47 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F0F7FF' },
   scroll: { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  hero: { alignItems: 'center', marginBottom: 32 },
-  logoEmoji: { fontSize: 72, marginBottom: 8 },
-  appName: { fontSize: 36, fontWeight: '900', color: '#1A3A5C', letterSpacing: -0.5 },
+  hero: { alignItems: 'center', marginBottom: 28 },
+  logoEmoji: { fontSize: 64, marginBottom: 8 },
+  appName: { fontSize: 34, fontWeight: '900', color: '#1A3A5C', letterSpacing: -0.5 },
   tagline: { fontSize: 16, color: '#5A7A9C', marginTop: 4 },
+  roleHeading: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1A3A5C',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  roleCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.09,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    borderWidth: 2,
+    borderColor: '#E3F2FD',
+  },
+  teacherCard: { borderColor: '#E8F5E9' },
+  roleEmoji: { fontSize: 44, marginRight: 16 },
+  roleTextBlock: { flex: 1 },
+  roleTitle: { fontSize: 20, fontWeight: '800', color: '#1A3A5C', marginBottom: 4 },
+  roleDesc: { fontSize: 14, color: '#5A7A9C', lineHeight: 20 },
+  roleArrow: { fontSize: 18, color: '#C5D5E5', marginLeft: 8 },
+  roleChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginBottom: 20,
+  },
+  roleChipText: { fontSize: 13, fontWeight: '700', color: '#4A90D9' },
   card: {
     backgroundColor: '#fff',
     borderRadius: 24,
@@ -249,13 +324,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#D6E8FF',
   },
-  errorText: {
-    color: '#E74C3C',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 10,
-    textAlign: 'center',
-  },
+  errorText: { color: '#E74C3C', fontSize: 14, fontWeight: '600', marginTop: 10, textAlign: 'center' },
   btn: {
     backgroundColor: '#4A90D9',
     borderRadius: 14,
@@ -263,9 +332,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  btnDisabled: { backgroundColor: '#A0C4E8' },
+  btnTeacher: { backgroundColor: '#2ECC71' },
+  btnDisabled: { opacity: 0.6 },
   btnText: { fontSize: 18, fontWeight: '800', color: '#fff' },
   switchHint: { fontSize: 14, color: '#7B8D9E', textAlign: 'center', marginTop: 14 },
   switchLink: { color: '#4A90D9', fontWeight: '700' },
-  privacyNote: { fontSize: 13, color: '#9BB5CC', textAlign: 'center' },
+  privacyNote: { fontSize: 13, color: '#9BB5CC', textAlign: 'center', marginTop: 24 },
 });

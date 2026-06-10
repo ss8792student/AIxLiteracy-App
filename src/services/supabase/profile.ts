@@ -48,6 +48,7 @@ export async function createProfile(profile: {
   name: string;
   avatarId: number;
   grade: number;
+  role?: string;
 }): Promise<SupabaseProfile | null> {
   const { data, error } = await supabase
     .from('profiles')
@@ -57,7 +58,7 @@ export async function createProfile(profile: {
       avatar_id: profile.avatarId,
       grade: profile.grade,
       language: 'en',
-      role: 'student',
+      role: profile.role ?? 'student',
       streak: 0,
       total_minutes: 0,
       total_words: 0,

@@ -13,8 +13,7 @@ function RouteGuard() {
 
   useEffect(() => {
     if (isLoading) return;
-    const onAuthScreen =
-      segments[0] === 'login' || segments[0] === 'onboarding';
+    const onAuthScreen = segments[0] === 'login' || segments[0] === 'onboarding';
     if (!session && !onAuthScreen) {
       router.replace('/login');
     }
@@ -32,6 +31,7 @@ export default function RootLayout() {
             <StatusBar style="auto" />
             <RouteGuard />
             <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
               <Stack.Screen name="login" />
               <Stack.Screen name="onboarding" />
               <Stack.Screen name="(student)" />

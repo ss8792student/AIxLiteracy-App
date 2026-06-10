@@ -9,15 +9,80 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Speech from 'expo-speech';
+import * as Haptics from 'expo-haptics';
 import { useStudent } from '../../../src/contexts/StudentContext';
-import { useSession } from '../../../src/contexts/SessionContext';
 import { useSync } from '../../../src/contexts/SyncContext';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getSessionById } from '../../../src/services/db/sessions';
 import { assessReading, fallbackLocalAssessment } from '../../../src/services/ai/assessment';
 import { getBookById } from '../../../src/services/db/books';
 import { completeReadingSession } from '../../../src/services/db/sessions';
 import { SAMPLE_PAGES } from '../../../src/constants/sampleBooks';
 import { ReadingAssessment, ReadingSession, Book } from '../../../src/types/models';
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+      else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function wordsMatch(spoken: string, book: string): boolean {
+  if (spoken === book) return true;
+  const variants = [book + 's', book + 'es', book + 'd', book + 'ed', book + 'ing'];
+  if (variants.includes(spoken)) return true;
+  if (spoken + 's' === book || spoken + 'es' === book) return true;
+  if (spoken + 'd' === book || spoken + 'ed' === book) return true;
+  if (spoken + 'ing' === book) return true;
+  const maxDist = book.length >= 7 ? 2 : book.length >= 4 ? 1 : 0;
+  return maxDist > 0 && levenshtein(spoken, book) <= maxDist;
+}
+
+function getMissedWords(transcript: string, bookText: string): string[] {
+  const normalize = (w: string) => w.toLowerCase().replace(/[^a-z0-9']/g, '');
+  const bookWords = bookText.split(/\s+/).map(normalize).filter(Boolean);
+  const spokenWords = transcript.split(/\s+/).map(normalize).filter(Boolean);
+
+  const missed: string[] = [];
+  let bookPtr = 0;
+
+  for (let ti = 0; ti < spokenWords.length && bookPtr < bookWords.length; ti++) {
+    const sw = spokenWords[ti];
+    if (!sw) continue;
+    if (wordsMatch(sw, bookWords[bookPtr])) {
+      bookPtr++;
+    } else {
+      let matchedAhead = false;
+      for (let ahead = 1; ahead <= 3; ahead++) {
+        if (bookPtr + ahead < bookWords.length && wordsMatch(sw, bookWords[bookPtr + ahead])) {
+          // Words between bookPtr and bookPtr+ahead were skipped
+          for (let s = bookPtr; s < bookPtr + ahead; s++) {
+            const w = bookWords[s];
+            if (w.length > 2 && !missed.includes(w)) missed.push(w);
+          }
+          bookPtr = bookPtr + ahead + 1;
+          matchedAhead = true;
+          break;
+        }
+      }
+      if (!matchedAhead) {
+        const w = bookWords[bookPtr];
+        if (w.length > 2 && !missed.includes(w)) missed.push(w);
+        bookPtr++;
+      }
+    }
+  }
+
+  return missed;
+}
 
 export default function FeedbackScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -29,6 +94,7 @@ export default function FeedbackScreen() {
   const [book, setBook] = useState<Book | null>(null);
   const [assessment, setAssessment] = useState<ReadingAssessment | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [missedWords, setMissedWords] = useState<string[]>([]);
 
   useEffect(() => {
     loadAndAnalyze();
@@ -51,6 +117,11 @@ export default function FeedbackScreen() {
     const bookPages = SAMPLE_PAGES[s.bookId] ?? [];
     const bookText = bookPages.map((p) => p.text).join(' ');
     const transcript = s.transcript ?? '';
+
+    // Compute missed words from transcript vs book
+    if (transcript.trim()) {
+      setMissedWords(getMissedWords(transcript, bookText));
+    }
 
     // No transcript means no real reading was captured — give honest feedback
     if (!transcript.trim()) {
@@ -160,14 +231,23 @@ export default function FeedbackScreen() {
           </View>
         )}
 
-        {assessment.wordsToReview.length > 0 && (
+        {missedWords.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Practice these words 📝</Text>
+            <Text style={styles.sectionTitle}>Words to practice 📝</Text>
+            <Text style={styles.sectionSubtitle}>Tap any word to hear it pronounced</Text>
             <View style={styles.wordChips}>
-              {assessment.wordsToReview.map((w, i) => (
-                <View key={i} style={styles.wordChip}>
+              {missedWords.map((w, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.wordChip}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    Speech.speak(w, { language: 'en-US', rate: 0.75 });
+                  }}
+                >
+                  <Text style={styles.wordChipSpeak}>🔊</Text>
                   <Text style={styles.wordChipText}>{w}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
@@ -181,9 +261,24 @@ export default function FeedbackScreen() {
           </View>
         )}
 
+        {missedWords.length > 0 && (
+          <TouchableOpacity
+            style={styles.wordReviewBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.replace(`/(student)/word-review/${sessionId}`);
+            }}
+          >
+            <Text style={styles.wordReviewBtnText}>🎤 Practice Missed Words</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={styles.practiceBtn}
-          onPress={() => router.replace(`/(student)/practice/${sessionId}`)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.replace(`/(student)/practice/${sessionId}`);
+          }}
         >
           <Text style={styles.practiceBtnText}>Start Practice Activities →</Text>
         </TouchableOpacity>
@@ -246,14 +341,27 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
   bulletDot: { fontSize: 16, color: '#2ECC71', marginRight: 8, marginTop: 1 },
   bulletText: { flex: 1, fontSize: 15, color: '#2C3E50', lineHeight: 22 },
+  sectionSubtitle: { fontSize: 13, color: '#8899AA', marginBottom: 10, marginTop: -6 },
   wordChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   wordChip: {
     backgroundColor: '#E8F4FD',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
+  wordChipSpeak: { fontSize: 13 },
   wordChipText: { fontSize: 15, fontWeight: '600', color: '#2980B9' },
+  wordReviewBtn: {
+    backgroundColor: '#FF8C42',
+    borderRadius: 16,
+    paddingVertical: 20,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  wordReviewBtnText: { fontSize: 18, fontWeight: '800', color: '#fff' },
   offlineBanner: {
     backgroundColor: '#FFF3CD',
     borderRadius: 12,

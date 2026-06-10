@@ -15,6 +15,8 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import * as Speech from 'expo-speech';
+import * as Haptics from 'expo-haptics';
 import { useStudent } from '../../../src/contexts/StudentContext';
 import { useSession } from '../../../src/contexts/SessionContext';
 import { getBookById } from '../../../src/services/db/books';
@@ -52,7 +54,36 @@ function normalizeWord(w: string): string {
   return w.toLowerCase().replace(/[^a-z0-9']/g, '');
 }
 
-/** Match transcript words against book words from position 0, returning per-word states. */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+      else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/** Returns true if two normalized words are close enough to count as correct. */
+function wordsMatch(spoken: string, book: string): boolean {
+  if (spoken === book) return true;
+  // Common morphological variants
+  const variants = [book + 's', book + 'es', book + 'd', book + 'ed', book + 'ing'];
+  if (variants.includes(spoken)) return true;
+  // Reverse variants (student said base, book has inflected form)
+  if (spoken + 's' === book || spoken + 'es' === book) return true;
+  if (spoken + 'd' === book || spoken + 'ed' === book) return true;
+  if (spoken + 'ing' === book) return true;
+  // Fuzzy edit distance: 1 edit for 4–6 char words, 2 edits for 7+ char words
+  const maxDist = book.length >= 7 ? 2 : book.length >= 4 ? 1 : 0;
+  return maxDist > 0 && levenshtein(spoken, book) <= maxDist;
+}
+
+/** Match transcript words against book words, returning per-word states. */
 function computeWordStates(
   transcriptWords: string[],
   allBookWords: string[], // normalized
@@ -65,14 +96,14 @@ function computeWordStates(
     const tw = transcriptWords[ti];
     if (!tw) continue;
 
-    if (tw === allBookWords[bookPtr]) {
+    if (wordsMatch(tw, allBookWords[bookPtr])) {
       states.set(bookPtr, 'correct');
       bookPtr++;
     } else {
-      // Look ahead up to 2 positions for a match (skipped/stuttered word)
+      // Look ahead up to 3 positions for a fuzzy match (skipped/stuttered word)
       let matched = false;
-      for (let ahead = 1; ahead <= 2; ahead++) {
-        if (bookPtr + ahead < allBookWords.length && tw === allBookWords[bookPtr + ahead]) {
+      for (let ahead = 1; ahead <= 3; ahead++) {
+        if (bookPtr + ahead < allBookWords.length && wordsMatch(tw, allBookWords[bookPtr + ahead])) {
           for (let s = bookPtr; s < bookPtr + ahead; s++) states.set(s, 'struggled');
           states.set(bookPtr + ahead, 'correct');
           bookPtr = bookPtr + ahead + 1;
@@ -112,6 +143,10 @@ function HighlightedText({
         return (
           <Text
             key={i}
+            onPress={() => {
+              Haptics.selectionAsync();
+              Speech.speak(token.clean, { language: 'en-US', rate: 0.75 });
+            }}
             style={[
               styles.word,
               state === 'correct' && styles.wordCorrect,
@@ -287,14 +322,13 @@ export default function ReadingScreen() {
   }
 
   async function togglePause() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isPaused) {
-      // Resume
       if (Platform.OS !== 'web') audioRecorder.record();
       speechActiveRef.current = true;
       ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: true, continuous: false });
       timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
     } else {
-      // Pause
       if (Platform.OS !== 'web') audioRecorder.pause();
       speechActiveRef.current = false;
       ExpoSpeechRecognitionModule.stop();
@@ -305,6 +339,7 @@ export default function ReadingScreen() {
 
   async function handleFinish() {
     if (isFinishing) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Ensure we have a session
     if (!sessionIdRef.current && currentStudent) {
@@ -370,6 +405,7 @@ export default function ReadingScreen() {
         <Text style={styles.timer}>{formatTime(elapsedSeconds)}</Text>
       </View>
 
+      <Text style={styles.tapHint}>👆 Tap any word to hear it</Text>
       <ScrollView style={styles.pageContent} contentContainerStyle={styles.pageContentInner}>
         {pageTokens[currentPage] ? (
           <HighlightedText tokens={pageTokens[currentPage]} wordStates={wordStates} />
@@ -448,6 +484,7 @@ const styles = StyleSheet.create({
   micInactive: { backgroundColor: '#F5F5F5' },
   micEmoji: { fontSize: 24 },
   timer: { fontSize: 18, fontWeight: '700', color: '#1A3A5C' },
+  tapHint: { textAlign: 'center', fontSize: 13, color: '#9BB5CC', paddingBottom: 4 },
   pageContent: { flex: 1 },
   pageContentInner: {
     paddingHorizontal: 28,

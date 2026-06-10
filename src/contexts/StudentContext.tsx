@@ -25,6 +25,8 @@ export function StudentProvider({ children }: { children: React.ReactNode }) {
     await getDb();
     const students = await getAllStudents();
     setAllStudents(students);
+    // Also sync currentStudent to the fresh DB row so progress stats update immediately
+    setCurrentStudent((prev) => (prev ? (students.find((s) => s.id === prev.id) ?? prev) : prev));
     return students;
   }, []);
 

@@ -13,11 +13,10 @@ import * as Speech from 'expo-speech';
 import * as Haptics from 'expo-haptics';
 import { useStudent } from '../../../src/contexts/StudentContext';
 import { useSync } from '../../../src/contexts/SyncContext';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { getSessionById } from '../../../src/services/db/sessions';
+import { getSessionById, completeReadingSession, getSessionsByStudent } from '../../../src/services/db/sessions';
 import { assessReading, fallbackLocalAssessment } from '../../../src/services/ai/assessment';
 import { getBookById } from '../../../src/services/db/books';
-import { completeReadingSession } from '../../../src/services/db/sessions';
+import { updateStudentProgress } from '../../../src/services/db/students';
 import { SAMPLE_PAGES } from '../../../src/constants/sampleBooks';
 import { ReadingAssessment, ReadingSession, Book } from '../../../src/types/models';
 
@@ -87,7 +86,7 @@ function getMissedWords(transcript: string, bookText: string): string[] {
 export default function FeedbackScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const router = useRouter();
-  const { currentStudent } = useStudent();
+  const { currentStudent, refreshStudents } = useStudent();
   const { isOnline } = useSync();
 
   const [session, setSession] = useState<ReadingSession | null>(null);
@@ -152,12 +151,35 @@ export default function FeedbackScreen() {
       result = fallbackLocalAssessment(transcript, bookText);
     }
 
+    const completedAt = s.completedAt ?? new Date().toISOString();
     await completeReadingSession(s.id, {
-      completedAt: s.completedAt ?? new Date().toISOString(),
+      completedAt,
       audioPath: s.audioPath,
       transcript,
       assessment: result,
     });
+
+    // Update student stats — only runs once (first time assessment is computed)
+    if (currentStudent) {
+      const minutesRead = Math.max(1, Math.round(
+        (new Date(completedAt).getTime() - new Date(s.startedAt).getTime()) / 60000
+      ));
+      const wordsRead = transcript.trim().split(/\s+/).filter(Boolean).length;
+
+      // Only count a book as "completed" if this is the first session for it
+      const allSessions = await getSessionsByStudent(s.studentId, 100);
+      const isFirstForBook = !allSessions.some(
+        (sess) => sess.bookId === s.bookId && sess.id !== s.id
+      );
+
+      await updateStudentProgress(s.studentId, {
+        totalMinutes: currentStudent.totalMinutes + minutesRead,
+        totalWords: currentStudent.totalWords + wordsRead,
+        ...(isFirstForBook && { totalBooksCompleted: currentStudent.totalBooksCompleted + 1 }),
+      });
+
+      await refreshStudents();
+    }
 
     setAssessment(result);
     setIsAnalyzing(false);

@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { useStudent } from '../../src/contexts/StudentContext';
 import { useSession } from '../../src/contexts/SessionContext';
 import { getAllBooks, upsertBook } from '../../src/services/db/books';
+import { getSessionsByStudent } from '../../src/services/db/sessions';
 import { getLevelColor, getLevelLabel } from '../../src/constants/readingLevels';
 import { Book } from '../../src/types/models';
 import { SAMPLE_BOOKS } from '../../src/constants/sampleBooks';
@@ -21,8 +22,9 @@ export default function LibraryScreen() {
   const { currentStudent } = useStudent();
   const { startSession } = useSession();
   const [books, setBooks] = useState<Book[]>([]);
+  const [completedBookIds, setCompletedBookIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'assigned' | 'recommended'>('all');
+  const [filter, setFilter] = useState<'all' | 'assigned' | 'recommended' | 'completed'>('all');
 
   useEffect(() => {
     loadBooks();
@@ -39,6 +41,11 @@ export default function LibraryScreen() {
         existing = await getAllBooks();
       }
       setBooks(existing);
+
+      if (currentStudent) {
+        const sessions = await getSessionsByStudent(currentStudent.id, 100);
+        setCompletedBookIds(new Set(sessions.map((s) => s.bookId)));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -55,6 +62,7 @@ export default function LibraryScreen() {
     if (filter === 'recommended') {
       return !currentStudent || Math.abs(b.readingLevel - currentStudent.grade) <= 1;
     }
+    if (filter === 'completed') return completedBookIds.has(b.id);
     return true;
   });
 
@@ -71,14 +79,14 @@ export default function LibraryScreen() {
       </View>
 
       <View style={styles.filterRow}>
-        {(['all', 'assigned', 'recommended'] as const).map((f) => (
+        {(['all', 'assigned', 'recommended', 'completed'] as const).map((f) => (
           <TouchableOpacity
             key={f}
             style={[styles.filterBtn, filter === f && styles.filterBtnActive]}
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f === 'all' ? 'All Books' : f === 'assigned' ? 'Assigned' : 'For Me'}
+              {f === 'all' ? 'All' : f === 'assigned' ? 'Assigned' : f === 'recommended' ? 'For Me' : '✓ Done'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -90,8 +98,14 @@ export default function LibraryScreen() {
         </View>
       ) : filteredBooks.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText}>No books here yet</Text>
-          <Text style={styles.emptySubText}>Your teacher will assign books soon!</Text>
+          <Text style={styles.emptyText}>
+            {filter === 'completed' ? 'No books read yet' : 'No books here yet'}
+          </Text>
+          <Text style={styles.emptySubText}>
+            {filter === 'completed'
+              ? 'Finish a book and it will appear here!'
+              : 'Your teacher will assign books soon!'}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -111,6 +125,11 @@ export default function LibraryScreen() {
                     <Text style={styles.levelText}>{getLevelLabel(item.readingLevel)}</Text>
                   </View>
                   <Text style={styles.timeText}>~{item.estimatedMinutes} min</Text>
+                  {completedBookIds.has(item.id) && (
+                    <View style={styles.completedBadge}>
+                      <Text style={styles.completedBadgeText}>✓ Read</Text>
+                    </View>
+                  )}
                 </View>
                 {item.isAssigned && (
                   <Text style={styles.assignedTag}>📌 Assigned</Text>
@@ -148,8 +167,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterBtnActive: { backgroundColor: '#4A90D9' },
-  filterText: { fontSize: 13, fontWeight: '600', color: '#5A7A9C' },
+  filterText: { fontSize: 12, fontWeight: '600', color: '#5A7A9C' },
   filterTextActive: { color: '#fff' },
+  completedBadge: {
+    backgroundColor: '#2ECC71',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  completedBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
   list: { padding: 16, gap: 12 },
   bookCard: {
     flexDirection: 'row',

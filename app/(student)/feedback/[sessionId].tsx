@@ -17,6 +17,7 @@ import { getSessionById, completeReadingSession, getSessionsByStudent } from '..
 import { assessReading, fallbackLocalAssessment } from '../../../src/services/ai/assessment';
 import { getBookById } from '../../../src/services/db/books';
 import { updateStudentProgress } from '../../../src/services/db/students';
+import { updateProfile } from '../../../src/services/supabase/profile';
 import { SAMPLE_PAGES } from '../../../src/constants/sampleBooks';
 import { ReadingAssessment, ReadingSession, Book } from '../../../src/types/models';
 
@@ -185,13 +186,17 @@ export default function FeedbackScreen() {
         newStreak = lastReadStr === yesterdayStr ? currentStudent.streak + 1 : 1;
       }
 
-      await updateStudentProgress(s.studentId, {
+      const progressUpdate = {
         streak: newStreak,
         lastReadDate: todayStr,
         totalMinutes: currentStudent.totalMinutes + minutesRead,
         totalWords: currentStudent.totalWords + wordsRead,
         ...(isFirstForBook && { totalBooksCompleted: currentStudent.totalBooksCompleted + 1 }),
-      });
+      };
+
+      await updateStudentProgress(s.studentId, progressUpdate);
+      // Best-effort sync to Supabase (no await — don't block UI on network)
+      updateProfile(s.studentId, progressUpdate).catch(() => {});
 
       await refreshStudents();
     }

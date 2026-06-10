@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStudent } from '../../src/contexts/StudentContext';
+import { useAuth } from '../../src/contexts/AuthContext';
 import { getSessionsByStudent } from '../../src/services/db/sessions';
 import { getBadgesForStudent, getVocabularyCount } from '../../src/services/db/vocabulary';
 import { Badge, ReadingSession } from '../../src/types/models';
@@ -18,6 +19,7 @@ import { BADGE_DEFINITIONS } from '../../src/constants/badgeTypes';
 export default function ProgressScreen() {
   const router = useRouter();
   const { currentStudent, refreshStudents } = useStudent();
+  const { signOut } = useAuth();
   const [sessions, setSessions] = useState<ReadingSession[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
   const [vocabCount, setVocabCount] = useState(0);
@@ -70,7 +72,12 @@ export default function ProgressScreen() {
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.title}>My Progress</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          onPress={async () => { await signOut(); router.replace('/login'); }}
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -305,4 +312,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   readMoreBtnText: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  signOutBtn: { padding: 8 },
+  signOutText: { fontSize: 13, color: '#E74C3C', fontWeight: '600' },
 });

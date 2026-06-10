@@ -57,6 +57,40 @@ export async function createStudent(student: Student): Promise<void> {
   );
 }
 
+export async function upsertStudent(student: Student): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO students (id, name, avatar_id, grade, language, role, streak,
+      last_read_date, total_minutes, total_words, total_books_completed, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       avatar_id = excluded.avatar_id,
+       grade = excluded.grade,
+       language = excluded.language,
+       role = excluded.role,
+       streak = excluded.streak,
+       last_read_date = excluded.last_read_date,
+       total_minutes = excluded.total_minutes,
+       total_words = excluded.total_words,
+       total_books_completed = excluded.total_books_completed`,
+    [
+      student.id,
+      student.name,
+      student.avatarId,
+      student.grade,
+      student.language,
+      student.role,
+      student.streak,
+      student.lastReadDate ?? null,
+      student.totalMinutes,
+      student.totalWords,
+      student.totalBooksCompleted,
+      student.createdAt,
+    ]
+  );
+}
+
 export async function updateStudentProgress(
   id: string,
   updates: Partial<Pick<Student, 'streak' | 'lastReadDate' | 'totalMinutes' | 'totalWords' | 'totalBooksCompleted'>>
